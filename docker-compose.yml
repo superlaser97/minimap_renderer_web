@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: web_wrapper/backend/Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./web_wrapper/backend/uploads:/app/web_wrapper/backend/uploads
+      - ./web_wrapper/backend/outputs:/app/web_wrapper/backend/outputs
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./web_wrapper/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
