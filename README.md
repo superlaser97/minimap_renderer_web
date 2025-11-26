@@ -88,7 +88,7 @@ You can also run the entire application using Docker Compose.
 1.  Ensure you have Docker and Docker Compose installed.
 2.  Run the following command in the project root:
     ```bash
-    docker-compose up --build
+    docker compose up --build
     ```
 3.  Access the application at `http://localhost:5173`.
 
