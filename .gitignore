@@ -171,3 +171,7 @@ code_testing/
 /scratch
 .coveragerc
 /replays/team*.wowsreplay
+
+# Web Wrapper
+web_wrapper/backend/uploads/
+web_wrapper/backend/outputs/

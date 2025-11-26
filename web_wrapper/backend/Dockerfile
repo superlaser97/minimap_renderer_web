@@ -16,8 +16,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the source code
-# We copy the 'src' directory to /app/src
-COPY minimap_renderer/src /app/src
+# Copy the minimap_renderer directory
+COPY minimap_renderer /app/minimap_renderer
 
 # Copy the backend code to /app/web_wrapper/backend
 COPY web_wrapper/backend /app/web_wrapper/backend

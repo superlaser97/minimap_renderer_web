@@ -1,6 +1,8 @@
 # Web Wrapper for Minimap Renderer
 
-This directory contains a web-based frontend for the Minimap Renderer, allowing users to upload replays and download rendered videos. See the minimap renderer project here: https://github.com/WoWs-Builder-Team/minimap_renderer
+![banner](image.png)
+
+A web-based frontend for the Minimap Renderer, this allowing users to upload replays and download rendered videos in the browser. See the minimap renderer project here: https://github.com/WoWs-Builder-Team/minimap_renderer
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
@@ -31,11 +33,7 @@ To avoid compatibility issues with system packages or other projects, it is **hi
     ```
 
 3.  Activate the virtual environment:
-    *   **Windows (PowerShell)**:
-        ```powershell
-        .\venv\Scripts\Activate.ps1
-        ```
-    *   **Windows (CMD)**:
+    *   **Windows**:
         ```cmd
         .\venv\Scripts\activate.bat
         ```

@@ -6,13 +6,14 @@ import logging
 import subprocess
 import sys
 from typing import List, Dict
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Response, Cookie, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pathlib import Path
 from contextlib import asynccontextmanager
 import aiofiles
+from typing import Optional
 
 # Configuration
 UPLOAD_DIR = Path("uploads")
@@ -98,6 +99,12 @@ async def worker():
         finally:
             queue.task_done()
 
+async def get_session_id(response: Response, session_id: Optional[str] = Cookie(None)):
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        response.set_cookie(key="session_id", value=session_id, httponly=True)
+    return session_id
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     asyncio.create_task(worker())
@@ -115,7 +122,11 @@ app.add_middleware(
 )
 
 @app.post("/api/upload", response_model=JobResponse)
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    response: Response, 
+    file: UploadFile = File(...), 
+    session_id: str = Depends(get_session_id)
+):
     job_id = str(uuid.uuid4())
     file_path = UPLOAD_DIR / f"{job_id}_{file.filename}"
     
@@ -128,7 +139,9 @@ async def upload_file(file: UploadFile = File(...)):
         "filename": file.filename,
         "status": JobStatus.QUEUED,
         "input_path": file_path,
-        "message": ""
+        "input_path": file_path,
+        "message": "",
+        "session_id": session_id
     }
     
     await queue.put(job_id)
@@ -141,7 +154,8 @@ async def upload_file(file: UploadFile = File(...)):
     }
 
 @app.get("/api/jobs", response_model=List[JobResponse])
-async def get_jobs():
+async def get_jobs(session_id: str = Depends(get_session_id)):
+    user_jobs = [job for job in jobs.values() if job.get("session_id") == session_id]
     return [
         {
             "id": job["id"],
@@ -149,17 +163,20 @@ async def get_jobs():
             "status": job["status"],
             "message": job.get("message", "")
         }
-        for job in jobs.values()
+        for job in user_jobs
     ]
 
 @app.get("/api/stream/{job_id}")
-async def stream_video(job_id: str):
+async def stream_video(job_id: str, session_id: str = Depends(get_session_id)):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = jobs[job_id]
     if job["status"] != JobStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Job not completed")
+
+    if job.get("session_id") != session_id:
+        raise HTTPException(status_code=403, detail="Access denied")
         
     output_path = job.get("output_path")
     if not output_path or not output_path.exists():
@@ -172,13 +189,16 @@ async def stream_video(job_id: str):
     )
 
 @app.get("/api/download/{job_id}")
-async def download_video(job_id: str):
+async def download_video(job_id: str, session_id: str = Depends(get_session_id)):
     if job_id not in jobs:
         raise HTTPException(status_code=404, detail="Job not found")
     
     job = jobs[job_id]
     if job["status"] != JobStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Job not completed")
+
+    if job.get("session_id") != session_id:
+        raise HTTPException(status_code=403, detail="Access denied")
         
     output_path = job.get("output_path")
     if not output_path or not output_path.exists():
@@ -191,8 +211,11 @@ async def download_video(job_id: str):
     )
 
 @app.get("/api/download-all")
-async def download_all_videos():
-    completed_jobs = [job for job in jobs.values() if job["status"] == JobStatus.COMPLETED]
+async def download_all_videos(session_id: str = Depends(get_session_id)):
+    completed_jobs = [
+        job for job in jobs.values() 
+        if job["status"] == JobStatus.COMPLETED and job.get("session_id") == session_id
+    ]
     
     if not completed_jobs:
         raise HTTPException(status_code=404, detail="No completed jobs found")
