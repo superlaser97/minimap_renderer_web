@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Download, Clock, CheckCircle, XCircle, Loader, FileVideo, PlayCircle, Play, Share2, GripVertical, Users } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Download, Clock, CheckCircle, XCircle, Loader, FileVideo, PlayCircle, Play, Share2, GripVertical, Users, Trash2 } from 'lucide-react';
 import axios from 'axios';
 import PlayerInfoModal from './PlayerInfoModal';
 
@@ -29,10 +29,18 @@ const StatusBadge = ({ status }) => {
     );
 };
 
-const JobList = ({ jobs, onPlay }) => {
+const JobList = ({ jobs, onPlay, onJobDeleted }) => {
     const [showPlayerInfo, setShowPlayerInfo] = useState(false);
     const [playerInfo, setPlayerInfo] = useState(null);
     const [loadingInfoId, setLoadingInfoId] = useState(null);
+    const [cleanupHours, setCleanupHours] = useState(24);
+    const [deletingJobId, setDeletingJobId] = useState(null);
+
+    useEffect(() => {
+        axios.get('/api/config/cleanup')
+            .then(res => setCleanupHours(res.data.hours))
+            .catch(err => console.error("Failed to fetch cleanup config", err));
+    }, []);
 
     const handleShowPlayerInfo = async (job) => {
         setLoadingInfoId(job.id);
@@ -45,6 +53,24 @@ const JobList = ({ jobs, onPlay }) => {
             alert("Failed to load player info. It might not be available for this render.");
         } finally {
             setLoadingInfoId(null);
+        }
+    };
+
+    const handleDelete = async (job) => {
+        if (!confirm(`Are you sure you want to delete the job for "${job.filename}"? This cannot be undone.`)) {
+            return;
+        }
+        setDeletingJobId(job.id);
+        try {
+            await axios.delete(`/api/jobs/${job.id}`);
+            if (onJobDeleted) {
+                onJobDeleted(job.id);
+            }
+        } catch (error) {
+            console.error("Failed to delete job", error);
+            alert("Failed to delete job.");
+        } finally {
+            setDeletingJobId(null);
         }
     };
 
@@ -84,6 +110,27 @@ const JobList = ({ jobs, onPlay }) => {
         e.dataTransfer.effectAllowed = 'copy';
     };
 
+    const getExpirationTime = (completedAt) => {
+        if (!completedAt) return null;
+        // completedAt is likely a string from DB, need to parse
+        // Assuming ISO format or similar that Date.parse accepts
+        const completedDate = new Date(completedAt);
+        const expirationDate = new Date(completedDate.getTime() + cleanupHours * 60 * 60 * 1000);
+        const now = new Date();
+        const diffMs = expirationDate - now;
+
+        if (diffMs <= 0) return "Expired";
+
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+        if (diffHours > 0) {
+            return `Expires in ${diffHours}h ${diffMinutes}m`;
+        } else {
+            return `Expires in ${diffMinutes}m`;
+        }
+    };
+
     if (jobs.length === 0) {
         return (
             <div className="text-center py-24 rounded-3xl border border-white/5 bg-slate-900/20 backdrop-blur-sm">
@@ -109,20 +156,32 @@ const JobList = ({ jobs, onPlay }) => {
                                 </div>
                                 <div className="min-w-0">
                                     <h4 className="font-medium text-slate-200 break-all text-sm">{job.filename}</h4>
-                                    <div className="mt-1">
+                                    <div className="mt-1 flex items-center gap-2 flex-wrap">
                                         <StatusBadge status={job.status} />
+                                        {job.status === 'completed' && (
+                                            <span className="text-[10px] text-slate-500">
+                                                {getExpirationTime(job.completed_at)}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </div>
+                            <button
+                                onClick={() => handleDelete(job)}
+                                disabled={deletingJobId === job.id}
+                                className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                            >
+                                {deletingJobId === job.id ? <Loader size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                            </button>
                         </div>
 
                         {job.message && (
-                            <p className="text-xs text-slate-400 mb-4 bg-white/5 p-2 rounded-lg">
+                            <p className="text-xs text-slate-400 mb-4 bg-white/5 p-2 rounded-lg break-words">
                                 {job.message}
                             </p>
                         )}
 
-                        <div className="flex gap-2 mt-2">
+                        <div className="flex gap-2 mt-2 flex-wrap">
                             {job.status === 'completed' && (
                                 <>
                                     <button
@@ -172,21 +231,28 @@ const JobList = ({ jobs, onPlay }) => {
                     <table className="w-full text-left text-sm table-fixed">
                         <thead className="bg-white/5 text-slate-400 uppercase text-xs font-medium tracking-wider">
                             <tr>
-                                <th className="px-6 py-4 w-32">Status</th>
+                                <th className="px-6 py-4 w-48">Status</th>
                                 <th className="px-6 py-4">Replay File</th>
-                                <th className="px-6 py-4 w-48">Details</th>
-                                <th className="px-6 py-4 text-right w-80">Action</th>
+                                <th className="px-6 py-4 w-64">Details</th>
+                                <th className="px-6 py-4 text-right w-[400px]">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
                             {jobs.map((job) => (
                                 <tr key={job.id} className="group hover:bg-white/[0.02] transition-colors duration-200">
-                                    <td className="px-6 py-4 whitespace-nowrap">
-                                        <StatusBadge status={job.status} />
+                                    <td className="px-6 py-4 whitespace-nowrap align-top">
+                                        <div className="flex flex-col gap-1">
+                                            <StatusBadge status={job.status} />
+                                            {job.status === 'completed' && (
+                                                <span className="text-[10px] text-slate-500 ml-1">
+                                                    {getExpirationTime(job.completed_at)}
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="p-2 rounded-lg bg-slate-800/50 text-slate-400 group-hover:text-blue-400 transition-colors shrink-0">
+                                    <td className="px-6 py-4 align-top">
+                                        <div className="flex items-start gap-3">
+                                            <div className="p-2 rounded-lg bg-slate-800/50 text-slate-400 group-hover:text-blue-400 transition-colors shrink-0 mt-0.5">
                                                 <PlayCircle size={18} />
                                             </div>
                                             <span className="font-medium text-slate-200 break-all" title={job.filename}>
@@ -194,71 +260,86 @@ const JobList = ({ jobs, onPlay }) => {
                                             </span>
                                         </div>
                                     </td>
-                                    <td className="px-6 py-4 text-slate-400 truncate">
-                                        {job.message || <span className="text-slate-600 italic">No details</span>}
+                                    <td className="px-6 py-4 text-slate-400 align-top">
+                                        <div className="break-words">
+                                            {job.message || <span className="text-slate-600 italic">No details</span>}
+                                        </div>
                                     </td>
-                                    <td className="px-6 py-4 text-right whitespace-nowrap">
-                                        {job.status === 'completed' ? (
-                                            <div className="flex items-center justify-end gap-2">
-                                                <button
-                                                    onClick={() => onPlay(job)}
-                                                    className="
+                                    <td className="px-6 py-4 text-right whitespace-nowrap align-top">
+                                        <div className="flex items-center justify-end gap-2">
+                                            {job.status === 'completed' && (
+                                                <>
+                                                    <button
+                                                        onClick={() => onPlay(job)}
+                                                        className="
+                                inline-flex items-center gap-2 px-3 py-2 
+                                bg-white/5 hover:bg-white/10 
+                                text-slate-200 rounded-xl text-xs font-semibold 
+                                transition-all duration-200
+                              "
+                                                    >
+                                                        <Play size={14} />
+                                                        Watch
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleShowPlayerInfo(job)}
+                                                        disabled={loadingInfoId === job.id}
+                                                        className="
+                                inline-flex items-center gap-2 px-3 py-2 
+                                bg-blue-500/10 hover:bg-blue-500/20 
+                                text-blue-400 rounded-xl text-xs font-semibold 
+                                transition-all duration-200 border border-blue-500/20 disabled:opacity-50
+                              "
+                                                        title="Player Info"
+                                                    >
+                                                        {loadingInfoId === job.id ? <Loader size={14} className="animate-spin" /> : <Users size={14} />}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleShare(job)}
+                                                        className="
+                                inline-flex items-center gap-2 px-3 py-2 
+                                bg-indigo-500/10 hover:bg-indigo-500/20 
+                                text-indigo-400 rounded-xl text-xs font-semibold 
+                                transition-all duration-200 border border-indigo-500/20
+                              "
+                                                        title="Share"
+                                                    >
+                                                        <Share2 size={14} />
+                                                    </button>
+                                                    <a
+                                                        href={`/api/download/${job.id}`}
+                                                        className="
+                                inline-flex items-center gap-2 px-4 py-2 
+                                bg-blue-600 hover:bg-blue-500 active:bg-blue-700
+                                text-white rounded-xl text-xs font-semibold 
+                                transition-all duration-200 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5
+                                cursor-grab active:cursor-grabbing
+                              "
+                                                        download
+                                                        draggable="true"
+                                                        onDragStart={(e) => handleDragStart(e, job)}
+                                                        title="Drag to Desktop or Discord"
+                                                    >
+                                                        <GripVertical size={14} className="mr-1 opacity-50" />
+                                                        <Download size={14} />
+                                                        Download
+                                                    </a>
+                                                </>
+                                            )}
+                                            <button
+                                                onClick={() => handleDelete(job)}
+                                                disabled={deletingJobId === job.id}
+                                                className="
                             inline-flex items-center gap-2 px-3 py-2 
-                            bg-white/5 hover:bg-white/10 
-                            text-slate-200 rounded-xl text-xs font-semibold 
-                            transition-all duration-200
+                            bg-red-500/10 hover:bg-red-500/20 
+                            text-red-400 rounded-xl text-xs font-semibold 
+                            transition-all duration-200 border border-red-500/20
                           "
-                                                >
-                                                    <Play size={14} />
-                                                    Watch
-                                                </button>
-                                                <button
-                                                    onClick={() => handleShowPlayerInfo(job)}
-                                                    disabled={loadingInfoId === job.id}
-                                                    className="
-                            inline-flex items-center gap-2 px-3 py-2 
-                            bg-blue-500/10 hover:bg-blue-500/20 
-                            text-blue-400 rounded-xl text-xs font-semibold 
-                            transition-all duration-200 border border-blue-500/20 disabled:opacity-50
-                          "
-                                                    title="Player Info"
-                                                >
-                                                    {loadingInfoId === job.id ? <Loader size={14} className="animate-spin" /> : <Users size={14} />}
-                                                </button>
-                                                <button
-                                                    onClick={() => handleShare(job)}
-                                                    className="
-                            inline-flex items-center gap-2 px-3 py-2 
-                            bg-indigo-500/10 hover:bg-indigo-500/20 
-                            text-indigo-400 rounded-xl text-xs font-semibold 
-                            transition-all duration-200 border border-indigo-500/20
-                          "
-                                                    title="Share"
-                                                >
-                                                    <Share2 size={14} />
-                                                </button>
-                                                <a
-                                                    href={`/api/download/${job.id}`}
-                                                    className="
-                            inline-flex items-center gap-2 px-4 py-2 
-                            bg-blue-600 hover:bg-blue-500 active:bg-blue-700
-                            text-white rounded-xl text-xs font-semibold 
-                            transition-all duration-200 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 hover:-translate-y-0.5
-                            cursor-grab active:cursor-grabbing
-                          "
-                                                    download
-                                                    draggable="true"
-                                                    onDragStart={(e) => handleDragStart(e, job)}
-                                                    title="Drag to Desktop or Discord"
-                                                >
-                                                    <GripVertical size={14} className="mr-1 opacity-50" />
-                                                    <Download size={14} />
-                                                    Download
-                                                </a>
-                                            </div>
-                                        ) : (
-                                            <span className="inline-block w-24"></span>
-                                        )}
+                                                title="Delete Job"
+                                            >
+                                                {deletingJobId === job.id ? <Loader size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             ))}

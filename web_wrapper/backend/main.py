@@ -37,6 +37,7 @@ class JobResponse(BaseModel):
     filename: str
     status: str
     message: Optional[str] = ""
+    completed_at: Optional[str] = None
 
 # Worker Queue
 queue = asyncio.Queue()
@@ -312,7 +313,8 @@ async def get_jobs(session_id: str = Depends(get_session_id)):
             "id": job["id"],
             "filename": job["filename"],
             "status": job["status"],
-            "message": job.get("message", "")
+            "message": job.get("message", ""),
+            "completed_at": str(job["completed_at"]) if job.get("completed_at") else None
         }
         for job in user_jobs
     ]
@@ -417,6 +419,50 @@ async def download_all_videos(session_id: str = Depends(get_session_id)):
         media_type="application/zip",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+@app.delete("/api/jobs/{job_id}")
+async def delete_job(job_id: str, session_id: str = Depends(get_session_id)):
+    job = database.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    if job.get("session_id") != session_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Delete files
+    # 1. Upload file
+    upload_path = UPLOAD_DIR / f"{job_id}_{job['filename']}"
+    if upload_path.exists():
+        try:
+            os.remove(upload_path)
+        except OSError as e:
+            print(f"Error deleting upload file {upload_path}: {e}")
+
+    # 2. Output file
+    output_path = Path(job.get("output_path")) if job.get("output_path") else None
+    if output_path and output_path.exists():
+        try:
+            os.remove(output_path)
+        except OSError as e:
+            print(f"Error deleting output file {output_path}: {e}")
+            
+    # 3. JSON info file
+    json_path = OUTPUT_DIR / f"{job_id}.json"
+    if json_path.exists():
+        try:
+            os.remove(json_path)
+        except OSError as e:
+            print(f"Error deleting json file {json_path}: {e}")
+
+    # Delete from DB
+    database.delete_job(job_id)
+    
+    return {"message": "Job deleted successfully"}
+
+@app.get("/api/config/cleanup")
+async def get_cleanup_config():
+    cleanup_hours = int(os.getenv("CLEANUP_HOURS", 24))
+    return {"hours": cleanup_hours}
 
 if __name__ == "__main__":
     import uvicorn

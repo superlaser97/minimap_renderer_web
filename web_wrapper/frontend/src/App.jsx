@@ -87,7 +87,7 @@ function App() {
                 </span>
               </div>
             </div>
-            <JobList jobs={jobs} onPlay={setSelectedJob} />
+            <JobList jobs={jobs} onPlay={setSelectedJob} onJobDeleted={fetchJobs} />
           </section>
         </main>
 
