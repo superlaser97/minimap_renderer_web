@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager
 import aiofiles
 from typing import Optional
 import httpx
+import database
 
 # Configuration
 UPLOAD_DIR = Path("uploads")
@@ -24,9 +25,6 @@ RENDERER_ROOT = Path("../../minimap_renderer/src").resolve() # Pointing to the s
 # Ensure directories exist
 UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
-
-# Job Store (In-memory for simplicity)
-jobs: Dict[str, Dict] = {}
 
 class JobStatus:
     QUEUED = "queued"
@@ -46,11 +44,17 @@ queue = asyncio.Queue()
 async def worker():
     while True:
         job_id = await queue.get()
-        job = jobs[job_id]
+        job = database.get_job(job_id)
         
+        if not job:
+            queue.task_done()
+            continue
+            
         try:
-            jobs[job_id]["status"] = JobStatus.PROCESSING
-            input_path = job["input_path"]
+            database.update_job_status(job_id, JobStatus.PROCESSING)
+            
+            # Reconstruct input path
+            input_path = UPLOAD_DIR / f"{job_id}_{job['filename']}"
             
             # Construct command
             # We need to run this from the root of the repo so imports work
@@ -62,17 +66,18 @@ async def worker():
                 str(input_path.absolute())
             ]
 
-            if job.get("anon"):
+            config = job['config']
+            if config.get("anon"):
                 cmd.append("--anon")
-            if job.get("no_chat"):
+            if config.get("no_chat"):
                 cmd.append("--no-chat")
-            if job.get("no_logs"):
+            if config.get("no_logs"):
                 cmd.append("--no-logs")
-            if job.get("team_tracers"):
+            if config.get("team_tracers"):
                 cmd.append("--team-tracers")
             
-            cmd.extend(["--fps", str(job.get("fps", 20))])
-            cmd.extend(["--quality", str(job.get("quality", 7))])
+            cmd.extend(["--fps", str(config.get("fps", 20))])
+            cmd.extend(["--quality", str(config.get("quality", 7))])
             
             print(f"Starting job {job_id}: {' '.join(cmd)}")
             
@@ -103,11 +108,10 @@ async def worker():
                     if original_json.exists():
                         shutil.move(str(original_json), str(final_json))
                         
-                    jobs[job_id]["status"] = JobStatus.COMPLETED
-                    jobs[job_id]["output_path"] = final_output
+                    database.update_job_status(job_id, JobStatus.COMPLETED, output_path=str(final_output))
                     
                     # Handle Discord Webhook
-                    webhook_url = job.get("discord_webhook_url")
+                    webhook_url = config.get("discord_webhook_url")
                     if webhook_url:
                         try:
                             async with httpx.AsyncClient() as client:
@@ -120,18 +124,15 @@ async def worker():
                             print(f"Discord upload error: {e}")
 
                 else:
-                    jobs[job_id]["status"] = JobStatus.FAILED
-                    jobs[job_id]["message"] = "Output file not found after rendering."
+                    database.update_job_status(job_id, JobStatus.FAILED, message="Output file not found after rendering.")
                     print(f"Error: Output file not found: {original_output}")
 
             else:
-                jobs[job_id]["status"] = JobStatus.FAILED
-                jobs[job_id]["message"] = f"Renderer failed with code {process.returncode}"
+                database.update_job_status(job_id, JobStatus.FAILED, message=f"Renderer failed with code {process.returncode}")
                 print(f"Renderer failed: {stderr.decode()}")
 
         except Exception as e:
-            jobs[job_id]["status"] = JobStatus.FAILED
-            jobs[job_id]["message"] = str(e)
+            database.update_job_status(job_id, JobStatus.FAILED, message=str(e))
             print(f"Job failed with exception: {e}")
         finally:
             queue.task_done()
@@ -144,6 +145,7 @@ async def get_session_id(response: Response, session_id: Optional[str] = Cookie(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    database.init_db()
     asyncio.create_task(worker())
     yield
 
@@ -178,14 +180,7 @@ async def upload_file(
         content = await file.read()
         await out_file.write(content)
     
-    jobs[job_id] = {
-        "id": job_id,
-        "filename": file.filename,
-        "status": JobStatus.QUEUED,
-        "input_path": file_path,
-        "input_path": file_path,
-        "message": "",
-        "session_id": session_id,
+    config = {
         "anon": anon,
         "no_chat": no_chat,
         "no_logs": no_logs,
@@ -194,6 +189,8 @@ async def upload_file(
         "quality": quality,
         "discord_webhook_url": discord_webhook_url
     }
+    
+    database.create_job(job_id, file.filename, session_id, config)
     
     await queue.put(job_id)
     
@@ -206,7 +203,7 @@ async def upload_file(
 
 @app.get("/api/jobs", response_model=List[JobResponse])
 async def get_jobs(session_id: str = Depends(get_session_id)):
-    user_jobs = [job for job in jobs.values() if job.get("session_id") == session_id]
+    user_jobs = database.get_jobs_by_session(session_id)
     return [
         {
             "id": job["id"],
@@ -219,17 +216,17 @@ async def get_jobs(session_id: str = Depends(get_session_id)):
 
 @app.get("/api/stream/{job_id}")
 async def stream_video(job_id: str, session_id: str = Depends(get_session_id)):
-    if job_id not in jobs:
+    job = database.get_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    job = jobs[job_id]
     if job["status"] != JobStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Job not completed")
 
     if job.get("session_id") != session_id:
         raise HTTPException(status_code=403, detail="Access denied")
         
-    output_path = job.get("output_path")
+    output_path = Path(job.get("output_path")) if job.get("output_path") else None
     if not output_path or not output_path.exists():
          raise HTTPException(status_code=500, detail="Output file missing")
 
@@ -241,17 +238,17 @@ async def stream_video(job_id: str, session_id: str = Depends(get_session_id)):
 
 @app.get("/api/download/{job_id}")
 async def download_video(job_id: str, session_id: str = Depends(get_session_id)):
-    if job_id not in jobs:
+    job = database.get_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    job = jobs[job_id]
     if job["status"] != JobStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Job not completed")
 
     if job.get("session_id") != session_id:
         raise HTTPException(status_code=403, detail="Access denied")
         
-    output_path = job.get("output_path")
+    output_path = Path(job.get("output_path")) if job.get("output_path") else None
     if not output_path or not output_path.exists():
          raise HTTPException(status_code=500, detail="Output file missing")
 
@@ -263,10 +260,10 @@ async def download_video(job_id: str, session_id: str = Depends(get_session_id))
 
 @app.get("/api/jobs/{job_id}/info")
 async def get_job_info(job_id: str, session_id: str = Depends(get_session_id)):
-    if job_id not in jobs:
+    job = database.get_job(job_id)
+    if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    job = jobs[job_id]
     if job["status"] != JobStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Job not completed")
 
@@ -284,9 +281,10 @@ async def get_job_info(job_id: str, session_id: str = Depends(get_session_id)):
 
 @app.get("/api/download-all")
 async def download_all_videos(session_id: str = Depends(get_session_id)):
+    jobs = database.get_jobs_by_session(session_id)
     completed_jobs = [
-        job for job in jobs.values() 
-        if job["status"] == JobStatus.COMPLETED and job.get("session_id") == session_id
+        job for job in jobs
+        if job["status"] == JobStatus.COMPLETED
     ]
     
     if not completed_jobs:
@@ -300,7 +298,7 @@ async def download_all_videos(session_id: str = Depends(get_session_id)):
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         for job in completed_jobs:
-            output_path = job.get("output_path")
+            output_path = Path(job.get("output_path")) if job.get("output_path") else None
             if output_path and output_path.exists():
                 zip_file.write(output_path, arcname=f"{Path(job['filename']).stem}.mp4")
     
@@ -309,9 +307,6 @@ async def download_all_videos(session_id: str = Depends(get_session_id)):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"minimap_renders_{timestamp}.zip"
     
-    # We need to return a streaming response for in-memory files or save to disk first
-    # For simplicity/robustness with FastAPI's FileResponse, let's save to a temp file or just stream bytes
-    # StreamingResponse is better for in-memory
     from fastapi.responses import StreamingResponse
     
     return StreamingResponse(
