@@ -29,10 +29,6 @@ async def cleanup_task():
             logger.info(f"Running cleanup task. Deleting jobs older than {CLEANUP_HOURS} hours.")
             
             # Get jobs to clean up
-            # We need to implement get_old_completed_jobs in database.py or do logic here
-            # Let's assume database.py has it or we fetch all and filter
-            
-            # Since we are using SQLite, we can query directly
             old_jobs = database.get_old_completed_jobs(CLEANUP_HOURS)
             
             for job in old_jobs:
@@ -40,34 +36,28 @@ async def cleanup_task():
                 logger.info(f"Cleaning up job {job_id}")
                 
                 # Delete files
-                # Input file
                 input_path = UPLOAD_DIR / f"{job_id}_{job['filename']}"
                 if input_path.exists():
                     input_path.unlink()
                 
-                # Output file
                 if job['output_path']:
                     output_path = Path(job['output_path'])
                     if output_path.exists():
                         output_path.unlink()
                         
-                # JSON info file
                 info_path = OUTPUT_DIR / f"{job_id}.json"
                 if info_path.exists():
                     info_path.unlink()
                     
-                # Delete from DB
                 database.delete_job(job_id)
                 
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
             
-        # Sleep for an hour (or configurable)
         await asyncio.sleep(3600)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start cleanup task
     task = asyncio.create_task(cleanup_task())
     yield
     task.cancel()
@@ -110,6 +100,20 @@ async def delete_job(job_id: str):
     database.delete_job(job_id)
     return {"message": "Job deleted"}
 
+@app.delete("/admin/jobs")
+async def delete_all_jobs():
+    # Delete all files
+    for file in UPLOAD_DIR.glob("*"):
+        if file.is_file():
+            file.unlink()
+            
+    for file in OUTPUT_DIR.glob("*"):
+        if file.is_file():
+            file.unlink()
+            
+    database.delete_all_jobs()
+    return {"message": "All jobs deleted"}
+
 @app.get("/admin/jobs/{job_id}/video")
 async def get_admin_video(job_id: str):
     job = database.get_job(job_id)
@@ -146,8 +150,14 @@ async def admin_ui():
         <div class="max-w-7xl mx-auto">
             <div class="flex justify-between items-center mb-8">
                 <h1 class="text-3xl font-bold text-white">Minimap Renderer Admin</h1>
-                <div class="text-sm text-slate-400">
-                    Cleanup Period: <span class="font-mono text-white bg-slate-800 px-2 py-1 rounded">""" + str(CLEANUP_HOURS) + """ hours</span>
+                <div class="flex items-center gap-4">
+                    <div class="text-sm text-slate-400">
+                        Cleanup Period: <span class="font-mono text-white bg-slate-800 px-2 py-1 rounded">""" + str(CLEANUP_HOURS) + """ hours</span>
+                    </div>
+                    <button onclick="confirmDeleteAll()" class="bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-2">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        Delete All
+                    </button>
                 </div>
             </div>
             
@@ -203,8 +213,31 @@ async def admin_ui():
             </div>
         </div>
 
+        <!-- Confirmation Modal -->
+        <div id="confirm-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm hidden animate-in fade-in duration-200">
+            <div class="relative w-full max-w-md bg-slate-900 rounded-2xl overflow-hidden shadow-2xl border border-white/10 p-6 animate-in zoom-in-95 duration-200">
+                <div class="flex flex-col items-center text-center">
+                    <div class="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
+                        <i data-lucide="alert-triangle" class="w-6 h-6 text-red-400"></i>
+                    </div>
+                    <h3 class="text-xl font-semibold text-white mb-2">Are you sure?</h3>
+                    <p id="confirm-message" class="text-slate-400 mb-6">This action cannot be undone.</p>
+                    <div class="flex gap-3 w-full">
+                        <button onclick="closeConfirmModal()" class="flex-1 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-medium transition-colors">
+                            Cancel
+                        </button>
+                        <button id="confirm-btn" class="flex-1 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl font-medium transition-colors shadow-lg shadow-red-500/20">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <script>
             lucide.createIcons();
+            let pendingDeleteId = null;
+            let isDeleteAll = false;
 
             async function fetchJobs() {
                 const response = await fetch('/admin/jobs');
@@ -233,7 +266,7 @@ async def admin_ui():
                         `;
                     }
                     actions += `
-                        <button onclick="deleteJob('${job.id}')" class="text-red-400 hover:text-red-300 hover:bg-red-400/10 px-3 py-1.5 rounded-lg transition-colors text-xs font-medium border border-red-400/20">
+                        <button onclick="confirmDeleteJob('${job.id}')" class="text-red-400 hover:text-red-300 hover:bg-red-400/10 px-3 py-1.5 rounded-lg transition-colors text-xs font-medium border border-red-400/20">
                             Delete
                         </button>
                     `;
@@ -253,16 +286,39 @@ async def admin_ui():
                 lucide.createIcons();
             }
 
-            async function deleteJob(id) {
-                if (!confirm('Are you sure you want to delete this job?')) return;
+            function confirmDeleteJob(id) {
+                pendingDeleteId = id;
+                isDeleteAll = false;
+                document.getElementById('confirm-message').textContent = 'This will permanently delete this job and its files.';
+                document.getElementById('confirm-modal').classList.remove('hidden');
+            }
+
+            function confirmDeleteAll() {
+                isDeleteAll = true;
+                document.getElementById('confirm-message').textContent = 'This will permanently delete ALL jobs and files. This cannot be undone.';
+                document.getElementById('confirm-modal').classList.remove('hidden');
+            }
+
+            function closeConfirmModal() {
+                document.getElementById('confirm-modal').classList.add('hidden');
+                pendingDeleteId = null;
+                isDeleteAll = false;
+            }
+
+            document.getElementById('confirm-btn').onclick = async () => {
                 try {
-                    await fetch(`/admin/jobs/${id}`, { method: 'DELETE' });
+                    if (isDeleteAll) {
+                        await fetch('/admin/jobs', { method: 'DELETE' });
+                    } else if (pendingDeleteId) {
+                        await fetch(`/admin/jobs/${pendingDeleteId}`, { method: 'DELETE' });
+                    }
                     fetchJobs();
+                    closeConfirmModal();
                 } catch (error) {
-                    alert('Failed to delete job');
+                    alert('Failed to delete');
                     console.error(error);
                 }
-            }
+            };
 
             function openVideo(id) {
                 const modal = document.getElementById('video-modal');

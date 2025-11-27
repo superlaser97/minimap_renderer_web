@@ -10,7 +10,7 @@ DB_PATH = Path(os.getenv("DB_PATH", "jobs.db"))
 
 def init_db():
     """Initialize the database with the jobs table."""
-    with sqlite3.connect(DB_PATH) as conn:
+    with sqlite3.connect(DB_PATH, timeout=30.0) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT PRIMARY KEY,
@@ -34,7 +34,7 @@ def dict_factory(cursor, row):
 
 @contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
     conn.row_factory = dict_factory
     try:
         yield conn
@@ -109,3 +109,8 @@ def get_old_completed_jobs(hours: int) -> List[Dict[str, Any]]:
             f"SELECT * FROM jobs WHERE status = 'completed' AND completed_at < datetime('now', '-{hours} hours')"
         )
         return cursor.fetchall()
+
+def delete_all_jobs():
+    with get_db() as conn:
+        conn.execute("DELETE FROM jobs")
+        conn.commit()

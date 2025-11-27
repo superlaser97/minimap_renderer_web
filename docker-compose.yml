@@ -11,6 +11,7 @@ services:
       - ./web_wrapper/backend/data:/app/data
     environment:
       - DB_PATH=/app/data/jobs.db
+      - MAX_WORKERS=2
     restart: unless-stopped
 
   admin:

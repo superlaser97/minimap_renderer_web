@@ -1,13 +1,15 @@
 # Web Wrapper for Minimap Renderer
 
-![banner](image.png)
+![banner](banner.png)
 
-A web-based frontend for the Minimap Renderer, this allowing users to upload replays and download rendered videos in the browser. See the minimap renderer project here: https://github.com/WoWs-Builder-Team/minimap_renderer
+A web-based frontend for the Minimap Renderer, allowing users to upload replays and download rendered videos in the browser. See the minimap renderer project here: https://github.com/WoWs-Builder-Team/minimap_renderer
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
 - [Running with npm](#running-with-npm)
 - [Running with docker](#running-with-docker)
+- [Admin UI](#admin-ui)
+- [Configuration](#configuration)
 - [Usage](#usage)
 - [Architecture](#architecture)
 - [Roadmap](#roadmap)
@@ -91,6 +93,29 @@ You can also run the entire application using Docker Compose.
     docker compose up --build
     ```
 3.  Access the application at `http://localhost:5173`.
+4.  Access the Admin UI at `http://localhost:8001`.
+
+## Admin UI
+
+The application includes a dedicated Admin UI for managing jobs and viewing rendered content.
+
+-   **URL**: `http://localhost:8001`
+-   **Features**:
+    -   **Job List**: View all processing, completed, and failed jobs.
+    -   **Video Preview**: Watch rendered videos directly in the browser.
+    -   **Player Info**: View detailed player information (Ship, Clan, Build) for each replay.
+    -   **Delete All**: One-click cleanup of all jobs and files with a custom confirmation dialog.
+    -   **Auto-Cleanup**: Automatically deletes jobs older than a configured number of hours (default: 24).
+
+## Configuration
+
+You can configure the application using environment variables in `docker-compose.yml` or your shell.
+
+| Variable | Description | Default | Service |
+| :--- | :--- | :--- | :--- |
+| `MAX_WORKERS` | Number of parallel rendering workers. Set to > 1 for parallel processing. | `1` | `backend` |
+| `CLEANUP_HOURS` | Age of jobs (in hours) to automatically delete. | `24` | `admin` |
+| `DB_PATH` | Path to the SQLite database file. | `/app/data/jobs.db` | `backend`, `admin` |
 
 ## Usage
 
@@ -101,17 +126,21 @@ You can also run the entire application using Docker Compose.
 
 ## Architecture
 
-- **Backend**: FastAPI app (`backend/main.py`) that manages a job queue and executes the original `render` module via subprocess.
+- **Backend**: FastAPI app (`backend/main.py`) that manages a job queue and executes the original `render` module via subprocess. It supports parallel rendering via `asyncio` tasks.
+- **Admin Server**: A separate FastAPI app (`backend/admin_main.py`) running on port 8001 for management tasks.
 - **Frontend**: React/Vite app (`frontend/`) with TailwindCSS for styling.
+- **Database**: SQLite (`jobs.db`) for persisting job state.
 - **Storage**:
     - Uploads are stored in `web_wrapper/backend/uploads`.
     - Generated videos are moved to `web_wrapper/backend/outputs`.
 
-# Roadmap
+## Roadmap
 
-- [ ] Delete rendered videos after download or after a certain amount of time
+- [x] Delete rendered videos after download or after a certain amount of time
 - [ ] Uploading directly to discord
 - [ ] Add support to customize the output video
+- [x] Parallel Rendering
+- [x] Admin Interface
 
 ## Attribution
 

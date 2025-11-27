@@ -36,7 +36,7 @@ class JobResponse(BaseModel):
     id: str
     filename: str
     status: str
-    message: str = ""
+    message: Optional[str] = ""
 
 # Worker Queue
 queue = asyncio.Queue()
@@ -146,7 +146,10 @@ async def get_session_id(response: Response, session_id: Optional[str] = Cookie(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     database.init_db()
-    asyncio.create_task(worker())
+    max_workers = int(os.getenv("MAX_WORKERS", 1))
+    print(f"Starting {max_workers} worker(s)")
+    for _ in range(max_workers):
+        asyncio.create_task(worker())
     yield
 
 app = FastAPI(lifespan=lifespan)
