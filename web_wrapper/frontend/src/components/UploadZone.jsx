@@ -75,7 +75,7 @@ const UploadZone = ({ onUploadComplete, settings }) => {
     };
 
     return (
-        <div className="w-full max-w-3xl mx-auto">
+        <div className="w-full">
             <div
                 className={`
           relative group cursor-pointer overflow-hidden

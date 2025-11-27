@@ -55,15 +55,17 @@ function App() {
           </p>
         </header>
 
-        <main className="relative z-10 space-y-12">
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+        <main className="relative z-10 grid grid-cols-1 lg:grid-cols-3 gap-8 items-start">
+          {/* Left Column: Upload & Settings */}
+          <div className="lg:col-span-1 space-y-8">
             <div className="transform hover:scale-[1.01] transition-transform duration-500">
               <UploadZone onUploadComplete={fetchJobs} settings={settings} />
             </div>
             <RenderSettings settings={settings} setSettings={setSettings} />
           </div>
 
-          <section>
+          {/* Right Column: Queue */}
+          <section className="lg:col-span-2">
             <div className="flex items-center justify-between mb-6 px-2">
               <h2 className="text-xl md:text-2xl font-semibold text-white flex items-center gap-3">
                 <span className="w-1 h-8 bg-blue-500 rounded-full block"></span>

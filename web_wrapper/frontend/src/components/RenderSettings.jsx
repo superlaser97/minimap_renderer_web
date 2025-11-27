@@ -7,13 +7,13 @@ const RenderSettings = ({ settings, setSettings }) => {
   };
 
   return (
-    <div className="bg-slate-900/50 rounded-2xl p-6 border border-white/10 backdrop-blur-sm w-full max-w-3xl mx-auto">
+    <div className="bg-slate-900/50 rounded-2xl p-6 border border-white/10 backdrop-blur-sm">
       <div className="flex items-center gap-2 mb-6 text-white/90">
         <Settings size={20} className="text-blue-400" />
         <h3 className="font-semibold text-lg">Render Settings</h3>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="space-y-6">
         {/* Toggles */}
         <div className="space-y-4">
           <Toggle
