@@ -1,5 +1,5 @@
 import React from 'react';
-import { Settings, UserX, MessageSquareOff, FileText, Users, Gauge, MonitorPlay } from 'lucide-react';
+import { Settings, UserX, MessageSquareOff, FileText, Users, Gauge, MonitorPlay, Webhook } from 'lucide-react';
 
 const RenderSettings = ({ settings, setSettings }) => {
   const handleChange = (key, value) => {
@@ -68,11 +68,39 @@ const RenderSettings = ({ settings, setSettings }) => {
             onChange={(v) => handleChange('quality', v)}
             description="Higher is better but larger file size"
           />
+
+          <div className="pt-4 border-t border-white/10">
+            <TextInput
+              label="Discord Webhook URL"
+              icon={Webhook}
+              value={settings.discord_webhook_url || ''}
+              onChange={(v) => handleChange('discord_webhook_url', v)}
+              placeholder="https://discord.com/api/webhooks/..."
+              description="Automatically upload the rendered video to a Discord channel"
+            />
+          </div>
         </div>
       </div>
     </div>
   );
 };
+
+const TextInput = ({ label, icon: Icon, value, onChange, placeholder, description }) => (
+  <div>
+    <div className="flex items-center gap-2 text-white font-medium text-sm mb-2">
+      <Icon size={16} className="text-slate-400" />
+      {label}
+    </div>
+    <input
+      type="text"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className="w-full bg-slate-900/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
+    />
+    {description && <p className="text-xs text-slate-500 mt-1.5">{description}</p>}
+  </div>
+);
 
 const Toggle = ({ label, icon: Icon, checked, onChange, description }) => (
   <div className="flex items-start gap-3 group cursor-pointer select-none" onClick={() => onChange(!checked)}>

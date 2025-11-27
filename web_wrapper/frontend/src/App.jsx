@@ -15,7 +15,8 @@ function App() {
     no_logs: false,
     team_tracers: false,
     fps: 20,
-    quality: 7
+    quality: 7,
+    discord_webhook_url: ''
   });
 
   const fetchJobs = async () => {

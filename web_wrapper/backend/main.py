@@ -14,6 +14,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 import aiofiles
 from typing import Optional
+import httpx
 
 # Configuration
 UPLOAD_DIR = Path("uploads")
@@ -94,6 +95,20 @@ async def worker():
                     shutil.move(str(original_output), str(final_output))
                     jobs[job_id]["status"] = JobStatus.COMPLETED
                     jobs[job_id]["output_path"] = final_output
+                    
+                    # Handle Discord Webhook
+                    webhook_url = job.get("discord_webhook_url")
+                    if webhook_url:
+                        try:
+                            async with httpx.AsyncClient() as client:
+                                with open(final_output, "rb") as f:
+                                    files = {"file": (final_output.name, f, "video/mp4")}
+                                    webhook_response = await client.post(webhook_url, files=files)
+                                    if webhook_response.status_code not in [200, 204]:
+                                        print(f"Discord upload failed: {webhook_response.status_code} - {webhook_response.text}")
+                        except Exception as e:
+                            print(f"Discord upload error: {e}")
+
                 else:
                     jobs[job_id]["status"] = JobStatus.FAILED
                     jobs[job_id]["message"] = "Output file not found after rendering."
@@ -143,7 +158,8 @@ async def upload_file(
     no_logs: bool = Form(False),
     team_tracers: bool = Form(False),
     fps: int = Form(20),
-    quality: int = Form(7)
+    quality: int = Form(7),
+    discord_webhook_url: Optional[str] = Form(None)
 ):
     job_id = str(uuid.uuid4())
     file_path = UPLOAD_DIR / f"{job_id}_{file.filename}"
@@ -165,7 +181,8 @@ async def upload_file(
         "no_logs": no_logs,
         "team_tracers": team_tracers,
         "fps": fps,
-        "quality": quality
+        "quality": quality,
+        "discord_webhook_url": discord_webhook_url
     }
     
     await queue.put(job_id)

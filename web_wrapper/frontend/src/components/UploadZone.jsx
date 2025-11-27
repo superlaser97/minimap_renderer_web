@@ -58,6 +58,9 @@ const UploadZone = ({ onUploadComplete, settings }) => {
                 formData.append('team_tracers', settings.team_tracers);
                 formData.append('fps', settings.fps);
                 formData.append('quality', settings.quality);
+                if (settings.discord_webhook_url) {
+                    formData.append('discord_webhook_url', settings.discord_webhook_url);
+                }
                 return axios.post('/api/upload', formData);
             });
 
