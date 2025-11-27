@@ -3,3 +3,9 @@ uvicorn
 python-multipart
 aiofiles
 httpx
+Pillow
+imageio-ffmpeg
+numpy
+tqdm
+hanzidentifier
+langdetect
