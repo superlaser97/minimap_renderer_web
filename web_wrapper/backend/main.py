@@ -93,6 +93,16 @@ async def worker():
                 
                 if original_output.exists():
                     shutil.move(str(original_output), str(final_output))
+                    
+                    # Move JSON info file if it exists
+                    original_json = input_path.with_suffix(".json")
+                    # The renderer outputs {stem}-builds.json
+                    original_json = input_path.parent / f"{input_path.stem}-builds.json"
+                    final_json = OUTPUT_DIR / f"{job_id}.json"
+                    
+                    if original_json.exists():
+                        shutil.move(str(original_json), str(final_json))
+                        
                     jobs[job_id]["status"] = JobStatus.COMPLETED
                     jobs[job_id]["output_path"] = final_output
                     
@@ -249,6 +259,27 @@ async def download_video(job_id: str, session_id: str = Depends(get_session_id))
         path=output_path,
         filename=f"{Path(job['filename']).stem}.mp4",
         media_type="video/mp4"
+    )
+
+@app.get("/api/jobs/{job_id}/info")
+async def get_job_info(job_id: str, session_id: str = Depends(get_session_id)):
+    if job_id not in jobs:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    job = jobs[job_id]
+    if job["status"] != JobStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="Job not completed")
+
+    if job.get("session_id") != session_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+        
+    info_path = OUTPUT_DIR / f"{job_id}.json"
+    if not info_path.exists():
+         raise HTTPException(status_code=404, detail="Player info not found")
+
+    return FileResponse(
+        path=info_path,
+        media_type="application/json"
     )
 
 @app.get("/api/download-all")

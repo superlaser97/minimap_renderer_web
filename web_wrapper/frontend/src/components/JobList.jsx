@@ -1,5 +1,7 @@
-import React from 'react';
-import { Download, Clock, CheckCircle, XCircle, Loader, FileVideo, PlayCircle, Play, Share2, GripVertical } from 'lucide-react';
+import React, { useState } from 'react';
+import { Download, Clock, CheckCircle, XCircle, Loader, FileVideo, PlayCircle, Play, Share2, GripVertical, Users } from 'lucide-react';
+import axios from 'axios';
+import PlayerInfoModal from './PlayerInfoModal';
 
 const StatusBadge = ({ status }) => {
     const styles = {
@@ -28,6 +30,24 @@ const StatusBadge = ({ status }) => {
 };
 
 const JobList = ({ jobs, onPlay }) => {
+    const [showPlayerInfo, setShowPlayerInfo] = useState(false);
+    const [playerInfo, setPlayerInfo] = useState(null);
+    const [loadingInfoId, setLoadingInfoId] = useState(null);
+
+    const handleShowPlayerInfo = async (job) => {
+        setLoadingInfoId(job.id);
+        try {
+            const response = await axios.get(`/api/jobs/${job.id}/info`);
+            setPlayerInfo(response.data);
+            setShowPlayerInfo(true);
+        } catch (error) {
+            console.error("Failed to fetch player info", error);
+            alert("Failed to load player info. It might not be available for this render.");
+        } finally {
+            setLoadingInfoId(null);
+        }
+    };
+
     const handleShare = async (job) => {
         try {
             // Show loading state or toast here if possible, but for now just proceed
@@ -113,6 +133,14 @@ const JobList = ({ jobs, onPlay }) => {
                                         Watch
                                     </button>
                                     <button
+                                        onClick={() => handleShowPlayerInfo(job)}
+                                        disabled={loadingInfoId === job.id}
+                                        className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 rounded-xl text-xs font-semibold transition-colors border border-blue-500/20 disabled:opacity-50"
+                                        title="Player Info"
+                                    >
+                                        {loadingInfoId === job.id ? <Loader size={14} className="animate-spin" /> : <Users size={14} />}
+                                    </button>
+                                    <button
                                         onClick={() => handleShare(job)}
                                         className="inline-flex justify-center items-center gap-2 px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-xl text-xs font-semibold transition-colors border border-indigo-500/20"
                                         title="Share to Discord/Socials"
@@ -147,7 +175,7 @@ const JobList = ({ jobs, onPlay }) => {
                                 <th className="px-6 py-4 w-32">Status</th>
                                 <th className="px-6 py-4">Replay File</th>
                                 <th className="px-6 py-4 w-48">Details</th>
-                                <th className="px-6 py-4 text-right w-64">Action</th>
+                                <th className="px-6 py-4 text-right w-80">Action</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
@@ -183,6 +211,19 @@ const JobList = ({ jobs, onPlay }) => {
                                                 >
                                                     <Play size={14} />
                                                     Watch
+                                                </button>
+                                                <button
+                                                    onClick={() => handleShowPlayerInfo(job)}
+                                                    disabled={loadingInfoId === job.id}
+                                                    className="
+                            inline-flex items-center gap-2 px-3 py-2 
+                            bg-blue-500/10 hover:bg-blue-500/20 
+                            text-blue-400 rounded-xl text-xs font-semibold 
+                            transition-all duration-200 border border-blue-500/20 disabled:opacity-50
+                          "
+                                                    title="Player Info"
+                                                >
+                                                    {loadingInfoId === job.id ? <Loader size={14} className="animate-spin" /> : <Users size={14} />}
                                                 </button>
                                                 <button
                                                     onClick={() => handleShare(job)}
@@ -225,6 +266,13 @@ const JobList = ({ jobs, onPlay }) => {
                     </table>
                 </div>
             </div>
+
+            {showPlayerInfo && (
+                <PlayerInfoModal
+                    players={playerInfo}
+                    onClose={() => setShowPlayerInfo(false)}
+                />
+            )}
         </div>
     );
 };
