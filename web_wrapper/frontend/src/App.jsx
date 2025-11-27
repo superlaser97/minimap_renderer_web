@@ -3,11 +3,20 @@ import axios from 'axios';
 import UploadZone from './components/UploadZone';
 import JobList from './components/JobList';
 import VideoModal from './components/VideoModal';
+import RenderSettings from './components/RenderSettings';
 import { Ship, Download } from 'lucide-react';
 
 function App() {
   const [jobs, setJobs] = useState([]);
   const [selectedJob, setSelectedJob] = useState(null);
+  const [settings, setSettings] = useState({
+    anon: false,
+    no_chat: false,
+    no_logs: false,
+    team_tracers: false,
+    fps: 20,
+    quality: 7
+  });
 
   const fetchJobs = async () => {
     try {
@@ -45,14 +54,15 @@ function App() {
           </p>
         </header>
 
-        <main className="grid grid-cols-1 min-[1400px]:grid-cols-12 gap-8 relative z-10 items-start">
-          <section className="min-[1400px]:col-span-5 min-[1600px]:col-span-4 transform hover:scale-[1.01] transition-transform duration-500">
-            <div className="min-[1400px]:sticky min-[1400px]:top-8">
-              <UploadZone onUploadComplete={fetchJobs} />
+        <main className="relative z-10 space-y-12">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 items-start">
+            <div className="transform hover:scale-[1.01] transition-transform duration-500">
+              <UploadZone onUploadComplete={fetchJobs} settings={settings} />
             </div>
-          </section>
+            <RenderSettings settings={settings} setSettings={setSettings} />
+          </div>
 
-          <section className="min-[1400px]:col-span-7 min-[1600px]:col-span-8">
+          <section>
             <div className="flex items-center justify-between mb-6 px-2">
               <h2 className="text-xl md:text-2xl font-semibold text-white flex items-center gap-3">
                 <span className="w-1 h-8 bg-blue-500 rounded-full block"></span>

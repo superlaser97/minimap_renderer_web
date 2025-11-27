@@ -2,7 +2,8 @@ import React, { useCallback, useState } from 'react';
 import { Upload, File, X, AlertCircle, Film } from 'lucide-react';
 import axios from 'axios';
 
-const UploadZone = ({ onUploadComplete }) => {
+
+const UploadZone = ({ onUploadComplete, settings }) => {
     const [isDragging, setIsDragging] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState(null);
@@ -51,6 +52,12 @@ const UploadZone = ({ onUploadComplete }) => {
             const uploads = validFiles.map(file => {
                 const formData = new FormData();
                 formData.append('file', file);
+                formData.append('anon', settings.anon);
+                formData.append('no_chat', settings.no_chat);
+                formData.append('no_logs', settings.no_logs);
+                formData.append('team_tracers', settings.team_tracers);
+                formData.append('fps', settings.fps);
+                formData.append('quality', settings.quality);
                 return axios.post('/api/upload', formData);
             });
 
@@ -135,6 +142,8 @@ const UploadZone = ({ onUploadComplete }) => {
                     {error}
                 </div>
             )}
+
+
         </div>
     );
 };

@@ -6,7 +6,7 @@ import logging
 import subprocess
 import sys
 from typing import List, Dict
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Response, Cookie, Depends
+from fastapi import FastAPI, UploadFile, File, BackgroundTasks, HTTPException, Response, Cookie, Depends, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -60,6 +60,18 @@ async def worker():
                 "--replay",
                 str(input_path.absolute())
             ]
+
+            if job.get("anon"):
+                cmd.append("--anon")
+            if job.get("no_chat"):
+                cmd.append("--no-chat")
+            if job.get("no_logs"):
+                cmd.append("--no-logs")
+            if job.get("team_tracers"):
+                cmd.append("--team-tracers")
+            
+            cmd.extend(["--fps", str(job.get("fps", 20))])
+            cmd.extend(["--quality", str(job.get("quality", 7))])
             
             print(f"Starting job {job_id}: {' '.join(cmd)}")
             
@@ -125,7 +137,13 @@ app.add_middleware(
 async def upload_file(
     response: Response, 
     file: UploadFile = File(...), 
-    session_id: str = Depends(get_session_id)
+    session_id: str = Depends(get_session_id),
+    anon: bool = Form(False),
+    no_chat: bool = Form(False),
+    no_logs: bool = Form(False),
+    team_tracers: bool = Form(False),
+    fps: int = Form(20),
+    quality: int = Form(7)
 ):
     job_id = str(uuid.uuid4())
     file_path = UPLOAD_DIR / f"{job_id}_{file.filename}"
@@ -141,7 +159,13 @@ async def upload_file(
         "input_path": file_path,
         "input_path": file_path,
         "message": "",
-        "session_id": session_id
+        "session_id": session_id,
+        "anon": anon,
+        "no_chat": no_chat,
+        "no_logs": no_logs,
+        "team_tracers": team_tracers,
+        "fps": fps,
+        "quality": quality
     }
     
     await queue.put(job_id)
