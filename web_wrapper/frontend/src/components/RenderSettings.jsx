@@ -70,7 +70,7 @@ const RenderSettings = ({ settings, setSettings }) => {
           />
 
           <div className="pt-4 border-t border-white/10">
-            <TextInput
+            <WebhookInput
               label="Discord Webhook URL"
               icon={Webhook}
               value={settings.discord_webhook_url || ''}
@@ -81,6 +81,77 @@ const RenderSettings = ({ settings, setSettings }) => {
           </div>
         </div>
       </div>
+    </div>
+  );
+};
+
+
+const WebhookInput = ({ label, icon: Icon, value, onChange, placeholder, description }) => {
+  const [webhooks, setWebhooks] = React.useState([]);
+  const [isCustom, setIsCustom] = React.useState(true);
+
+  React.useEffect(() => {
+    fetch('/api/config/webhooks')
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data) && data.length > 0) {
+          setWebhooks(data);
+          // If current value matches one of the webhooks, set isCustom to false
+          const match = data.find(w => w.url === value);
+          if (match) {
+            setIsCustom(false);
+          }
+        }
+      })
+      .catch(err => console.error("Failed to fetch webhooks:", err));
+  }, []);
+
+  const handleSelectChange = (e) => {
+    const selectedUrl = e.target.value;
+    if (selectedUrl === 'custom') {
+      setIsCustom(true);
+      onChange('');
+    } else {
+      setIsCustom(false);
+      onChange(selectedUrl);
+    }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 text-white font-medium text-sm mb-2">
+        <Icon size={16} className="text-slate-400" />
+        {label}
+      </div>
+
+      <div className="space-y-2">
+        {webhooks.length > 0 && (
+          <select
+            value={isCustom ? 'custom' : value}
+            onChange={handleSelectChange}
+            className="w-full bg-slate-900/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors appearance-none cursor-pointer"
+          >
+            <option value="custom">Custom URL...</option>
+            {webhooks.map((webhook, index) => (
+              <option key={index} value={webhook.url}>
+                {webhook.name}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {isCustom && (
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="w-full bg-slate-900/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:border-blue-500 transition-colors"
+          />
+        )}
+      </div>
+
+      {description && <p className="text-xs text-slate-500 mt-1.5">{description}</p>}
     </div>
   );
 };

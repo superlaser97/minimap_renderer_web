@@ -6,10 +6,10 @@ A web-based frontend for the Minimap Renderer, allowing users to upload replays 
 
 ## Table of Contents
 - [Prerequisites](#prerequisites)
+- [Configuration](#configuration)
 - [Running with npm](#running-with-npm)
 - [Running with docker](#running-with-docker)
 - [Admin UI](#admin-ui)
-- [Configuration](#configuration)
 - [Usage](#usage)
 - [Architecture](#architecture)
 - [Roadmap](#roadmap)
@@ -18,6 +18,41 @@ A web-based frontend for the Minimap Renderer, allowing users to upload replays 
 ## Prerequisites
 - Python 3.10+ (Python 3.14 is supported with the instructions below)
 - Node.js and npm
+
+## Configuration
+
+The application is configured using environment variables. A `.env` file is used to store these variables locally.
+
+1.  Copy `.env.example` to `.env`:
+    ```bash
+    cp .env.example .env
+    ```
+2.  Edit `.env` to customize your configuration.
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `BACKEND_PORT` | Port for the backend API. | `8000` |
+| `ADMIN_PORT` | Port for the Admin UI. | `8001` |
+| `FRONTEND_PORT` | Port for the Frontend. | `5173` |
+| `MAX_WORKERS` | Number of parallel rendering workers. | `2` |
+| `CLEANUP_HOURS` | Age of jobs (in hours) to automatically delete. | `24` |
+| `DISCORD_WEBHOOKS` | JSON list of pre-defined Discord webhooks. | `[]` |
+
+### Discord Webhooks
+
+You can pre-define Discord webhooks in the `.env` file using the `DISCORD_WEBHOOKS` variable. This allows users to easily select a destination for their rendered videos.
+
+**Format:**
+```json
+[{"name": "My Server", "url": "https://discord.com/api/webhooks/..."}]
+```
+
+When a render is complete, the webhook will send:
+- The rendered video file.
+- A formatted message containing:
+    - **Player In Render**: The main player (usually the one recording).
+    - **Other Players**: A list of all other players in the match.
+    - **Builds**: Links to ship builds if available.
 
 ## Running with npm
 ### 1. Set up a Python Virtual Environment
@@ -107,15 +142,8 @@ The application includes a dedicated Admin UI for managing jobs and viewing rend
     -   **Delete All**: One-click cleanup of all jobs and files with a custom confirmation dialog.
     -   **Auto-Cleanup**: Automatically deletes jobs older than a configured number of hours (default: 24).
 
-## Configuration
 
-You can configure the application using environment variables in `docker-compose.yml` or your shell.
 
-| Variable | Description | Default | Service |
-| :--- | :--- | :--- | :--- |
-| `MAX_WORKERS` | Number of parallel rendering workers. Set to > 1 for parallel processing. | `1` | `backend` |
-| `CLEANUP_HOURS` | Age of jobs (in hours) to automatically delete. | `24` | `admin` |
-| `DB_PATH` | Path to the SQLite database file. | `/app/data/jobs.db` | `backend`, `admin` |
 
 ## Usage
 

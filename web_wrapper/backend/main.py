@@ -41,6 +41,88 @@ class JobResponse(BaseModel):
 # Worker Queue
 queue = asyncio.Queue()
 
+def construct_discord_payload(json_path: Path) -> dict:
+    import json
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            players = json.load(f)
+            
+        if not players:
+            return {"content": "No player info available."}
+
+        # Group by relation
+        teams = {}
+        for player in players:
+            relation = player.get('relation', 2)
+            if relation not in teams:
+                teams[relation] = []
+            teams[relation].append(player)
+            
+        # Identify "Player In Render"
+        # The recording player typically has a relation that is not 0 (Ally) or 1 (Enemy).
+        # It might be 2 (Neutral) or something else (e.g. -1, or a specific self-flag).
+        # We'll assume anyone NOT 0 or 1 is the main player.
+        main_players = []
+        other_players = []
+        
+        for r, p_list in teams.items():
+            # Convert relation to int just in case it's a string in JSON
+            try:
+                r_int = int(r)
+            except:
+                r_int = -999 # Treat unknown non-ints as potential main player?
+                
+            if r_int != 0 and r_int != 1:
+                main_players.extend(p_list)
+            else:
+                other_players.extend(p_list)
+        
+        # Sort other players by name for consistency
+        other_players.sort(key=lambda x: x.get('name', ''))
+
+        embed = {
+            "title": "Render Complete",
+            "color": 0x57F287, # Discord Green
+            "fields": []
+        }
+
+        # Field 1: Player In Render
+        if main_players:
+            # Assuming usually one, but handle multiple
+            names = [f"{p.get('name', 'Unknown')} ({p.get('ship', 'Unknown Ship')})" for p in main_players]
+            embed["fields"].append({
+                "name": "Player In Render",
+                "value": "\n".join(names),
+                "inline": False
+            })
+        else:
+             embed["fields"].append({
+                "name": "Player In Render",
+                "value": "Unknown",
+                "inline": False
+            })
+
+        # Field 2: Other Players
+        if other_players:
+            # Just names, comma separated
+            names = [p.get('name', 'Unknown') for p in other_players]
+            # Discord field value limit is 1024 chars
+            value = ", ".join(names)
+            if len(value) > 1024:
+                value = value[:1021] + "..."
+            
+            embed["fields"].append({
+                "name": "Other Players",
+                "value": value,
+                "inline": False
+            })
+
+        return {"embeds": [embed]}
+
+    except Exception as e:
+        print(f"Error formatting Discord message: {e}")
+        return {"content": "Error formatting player info."}
+
 async def worker():
     while True:
         job_id = await queue.get()
@@ -114,10 +196,17 @@ async def worker():
                     webhook_url = config.get("discord_webhook_url")
                     if webhook_url:
                         try:
+                            payload = {}
+                            if final_json.exists():
+                                payload = construct_discord_payload(final_json)
+
+                            import json
                             async with httpx.AsyncClient() as client:
                                 with open(final_output, "rb") as f:
                                     files = {"file": (final_output.name, f, "video/mp4")}
-                                    webhook_response = await client.post(webhook_url, files=files)
+                                    # When sending files, JSON payload must be sent as 'payload_json' string
+                                    data = {"payload_json": json.dumps(payload)}
+                                    webhook_response = await client.post(webhook_url, data=data, files=files)
                                     if webhook_response.status_code not in [200, 204]:
                                         print(f"Discord upload failed: {webhook_response.status_code} - {webhook_response.text}")
                         except Exception as e:
@@ -203,6 +292,17 @@ async def upload_file(
         "status": JobStatus.QUEUED,
         "message": "Queued for rendering"
     }
+
+@app.get("/api/config/webhooks")
+async def get_discord_webhooks():
+    import json
+    webhooks_env = os.getenv("DISCORD_WEBHOOKS", "[]")
+    try:
+        webhooks = json.loads(webhooks_env)
+        return webhooks
+    except json.JSONDecodeError:
+        print("Error decoding DISCORD_WEBHOOKS environment variable")
+        return []
 
 @app.get("/api/jobs", response_model=List[JobResponse])
 async def get_jobs(session_id: str = Depends(get_session_id)):
