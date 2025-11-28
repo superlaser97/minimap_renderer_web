@@ -145,8 +145,8 @@ const JobList = ({ jobs, onPlay, onJobDeleted }) => {
 
     return (
         <div className="w-full">
-            {/* Mobile Card View (visible below 1400px) */}
-            <div className="min-[1400px]:hidden space-y-4">
+            {/* Mobile Card View (visible below 1600px) */}
+            <div className="min-[1600px]:hidden space-y-4">
                 {jobs.map((job) => (
                     <div key={job.id} className="p-4 rounded-2xl border border-white/10 bg-slate-900/40 backdrop-blur-xl shadow-lg">
                         <div className="flex items-start justify-between mb-4">
